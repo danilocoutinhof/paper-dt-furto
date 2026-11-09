@@ -1,0 +1,68 @@
+Reviewer Comments:
+
+Reviewer: 1
+
+Recommendation: Reject
+
+Comments:
+- It is weird that the authors call this a “digital twin”, which may not be appropriate. I think this is just a simulation-based platform for model training and testing.
+- If there are no real-world testing experiments, it is not convincing that the proposed system works in practice. The trained logistic regression model may over-fit to the digital twin-based training set.
+- There are many features fed into the logistic regression model. It would be interesting to analyze which feature(s) are most useful to determine whether the theft appears. Also, it would be helpful to show if a larger model (probably with 2-3 FC layers is enough) to help improve the F1 scores.
+- As a binary classification task, the reported precision/recall/F1-score is actually not good enough. Also, it would be helpful to show the ROC curves and present the AUROC. This waives the need to trade off precision and recall.
+
+
+Additional Questions:
+
+Reviewer: 2
+
+Recommendation: Major Revision
+
+Comments:
+This manuscript presents a conceptually strong and highly relevant contribution to the fields of smart metering and IoT telemetry. The authors propose a digital-twin-driven framework that treats NB-IoT telemetry density as a dynamically controllable resource, adjusting observation windows based on contextual theft-risk estimation. The architectural design of the digital twin and the closed-loop optimization approach are both well-conceived and address a notable gap in the literature.
+
+However, while the methodology is sound, the current validation relies heavily on idealized synthetic data, which limits the manuscript's ability to conclusively demonstrate real-world applicability. To warrant publication in a venue as rigorous as IEEE JSAC, the manuscript requires revisions to address the following strengths and areas for improvement.
+
+Strengths:
+
+- Conceptual Innovation: The shift from static anomaly classification to an application-oriented closed-loop optimization problem is a significant and practical contribution. Treating telemetry density as a controllable resource is highly advantageous for LPWAN-constrained environments.
+
+- Metrological Coherence: The synthetic data generation is commendable for preserving metrological consistency among electrical variables (e.g., active power, reactive power, RMS current, and power factor). This ensures that the simulated discrepancies remain physically plausible.
+
+- Transparency and Reproducibility: The implementation of explicit traceability artifacts, such as state history, command plans, and execution manifests, significantly strengthens the verifiability of the framework and is a great practice for digital twin research.
+
+Major Comments / Areas for Improvement:
+
+- Realism of Synthetic Scenarios: As noted in Section IV-G, the supervised baseline exhibits very high separability and occasional perfect performance (F1-score of 1.0). To meet the rigorous standards of this journal, the authors must introduce higher levels of statistical difficulty. The next revision must bridge this gap by either validating the framework against a real-world smart metering dataset, or by introducing significant real-world noise into the simulations (e.g., packet loss, sensor drift, communication latency, and legitimate but highly erratic consumer load profiles).
+
+- Refinement of the 'Critical Slot Hit' Metric: The binary nature of the critical slot hit metric is too rigid, as it heavily penalizes minor temporal displacements. For example, in the intermittent_evening scenario, a single-slot lag resulted in a score of zero despite a strong F1-score of 0.8889. The authors should consider proposing a "windowed," relaxed, or Gaussian-decay version of this metric (similar to Intersection over Union in object detection) to more accurately and fairly reflect operational utility.
+
+- Context-Aware Fusion Strategy: The conceptually richer context_aware strategy did not translate its sophistication into a consistent numerical advantage over the simpler weighted strategy. The manuscript would benefit from a deeper discussion or ablation study on why this occurred. How might the semantic switching rules and contextual modeling be refined in future iterations to allow this strategy to outperform the weighted baseline?
+
+Minor Comments:
+
+- Mathematical Clarity in Section III-D: The utility function is defined conceptually as U = λ1·D − λ2·C. It would strengthen the formalization if D (detection capability) and C (communication cost) were explicitly mathematically formulated as functions of the system state st and action at within the text, rather than just described textually.
+
+- Figures 1-3 Quality: Ensure that all block diagrams and topological figures are rendered in high-resolution vector formats for the final camera-ready version, as some text may become difficult to read upon scaling.
+
+Additional Questions:
+
+Reviewer: 3
+
+Recommendation: Reject
+
+Comments:
+1. The aggressive mode uses a 5-minute observation interval, while all synthetic scenarios have only 15-minute native resolution. Hence, how the simulator can actually evaluate 5-minute sampling or distinguish it from the 15-minute mode?
+
+2. The synthetic theft scenarios are generated mainly by creating discrepancies between the forensic and billing meters, while these same discrepancies are major detection features. This setup may make the classification problem artificially easy and limits the credibility of the near-perfect results.
+
+3. Although the paper emphasizes NB-IoT, the communication layer is represented by a mock transport and the communication cost is mainly measured by transmitted bytes. Important NB-IoT characteristics such as latency, retransmissions, radio conditions, signaling overhead, and energy consumption are not evaluated.
+
+4. The paper formulates a utility maximization problem, but no actual optimization procedure is provided. The objective weights are not determined, the policy is not solved mathematically, and no convergence or optimality analysis is given. This makes “closed-loop optimization” insufficiently supported.
+
+5. No computational complexity or scalability analysis is presented. Since the framework includes feature extraction, two risk engines, probability fusion, policy decisions, and continuous twin-state updates, the authors should quantify computational cost, memory requirements, and runtime behavior as the number of monitored devices increases.
+
+6. The main contribution is not sufficiently distinguished from existing adaptive telemetry and digital-twin frameworks. The current method largely combines risk estimation, heuristic probability fusion, and adaptive sampling. The manuscript should clarify which component is technically novel and why the overall framework represents a substantial methodological advance.
+
+7. The baseline comparison is not fully controlled. The adaptive scheme uses decision probability with weighted fusion, whereas the fixed-short and fixed-long schemes use supervised probability. Therefore, changes in detection performance may come from both the observation policy and the decision source, making the comparison difficult to interpret.
+
+8. The mathematical and experimental presentation needs substantial improvement. Several equations are introduced mainly at a conceptual level, important parameters and fusion weights are not justified quantitatively, and some tables largely repeat the surrounding text.

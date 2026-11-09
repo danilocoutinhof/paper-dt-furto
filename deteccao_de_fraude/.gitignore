@@ -1,0 +1,11 @@
+﻿__pycache__/
+.venv/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+outputs/
+data/raw/*.csv
+data/processed/*.csv
+!data/raw/.gitkeep
+!data/processed/.gitkeep

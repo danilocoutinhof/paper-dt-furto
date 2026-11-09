@@ -1,0 +1,191 @@
+Decision letter (Initial Submission)
+Digital-Twin-Driven Adaptive Observation for Energy-Theft Detection in NB-IoT Forensic Telemetry
+Subject	IEEE Access - Decision on Manuscript ID Access-2026-46607
+Date sent	4 November 2026 at 01:02 GMT-3
+From	
+ieeeaccesseic@ieee.org
+To	
+Show 5 addresses
+CC	
+lukasz.wisniewski@th-owl.de
+04-Nov-2026
+
+Dear Mr. FILHO:
+
+I am writing to you regarding manuscript # Access-2026-46607 entitled "Digital-Twin-Driven Adaptive Observation for Energy-Theft Detection in NB-IoT Forensic Telemetry" which you submitted to IEEE Access.
+
+Your article was peer reviewed with interest but has not been recommended for publication in its current form.  We strongly encourage you to address the reviewers’ concerns, which can be found at the bottom of this letter, and resubmit your article to IEEE Access once you have updated it accordingly.
+ 
+Please note that IEEE Access has a binary peer review process. Therefore, to uphold quality to IEEE standards, an article is rejected even if it requires minor edits.
+ 
+When updating your manuscript, you should elaborate on your points and clarify with references, examples, data, etc. If you disagree with any technical points the reviewers have made, please include your counterarguments in your response to the reviewers (more information detailed below) and work this into the updated manuscript. 
+
+Also, note that if a reviewer suggested references, you should only add those that are relevant to your work if you feel they strengthen your article. Recommending references to specific publications is not appropriate for reviewers and you should report excessive cases to ieeeaccessEIC@ieee.org.  Authors are not obligated to cite articles that are recommended by the reviewers, and the final decision on the article will not be influenced by whether or not authors cite these suggested references.
+ 
+IEEE Access allows one opportunity to resubmit. If the updated manuscript is determined not to have addressed all of the previous reviewers’ concerns, or if the Associate Editor still has substantial technical concerns, the article will be rejected and no further resubmissions will be allowed.
+ 
+When you are ready to resubmit your updated article, you can do so in the IEEE Author Portal.  When you log into the IEEE Author Portal you will see the title of the rejected article and the option to “Start Resubmission”.
+
+https://ieee.atyponrex.com/submission/submissionBoard/REX-PROD-2-C39672F2-6AAC-414B-93E8-EF26FB32264A-B6A52D9D-C72C-47ED-B635-427E0B06F60F-47028/current?idtype=external
+ 
+Upon resubmission you will be asked to upload the following 3 files:
+
+1) A document containing your response to reviewers from the previous peer review.  The “response to reviewers” document (template attached) should have the following regarding each comment: a) Reviewer’s concern, b) your response to the concern, c) your action to remedy the concern. The document should be uploaded with your manuscript files under "Author's Response Files.”
+
+2) Your updated manuscript with all your individual changes highlighted, including grammatical changes (e.g. preferably with the yellow highlight tool within the pdf file). This file should be uploaded with your manuscript files as “Highlighted PDF.”
+
+3) A clean copy of the final manuscript (without highlighted changes) submitted as a Word or LaTeX file, and as a PDF, both submitted as the “Main Manuscript.”
+
+**IMPORTANT: Please see the attached Resubmission Checklist that details all the items listed above.  Please utilize this checklist to ensure you have made the necessary edits to your manuscript, and to ensure you have all the necessary files prepared prior to resubmission.
+
+*** AUTHOR LIST CHANGES: If your revised manuscript has an updated author list, you will need to submit a formal request to the Editor by completing the attachment labelled ‘Request for Byline Change,’ and uploading it as 'Request for byline change form.' This should include a DETAILED justification explaining each author’s contribution(s) to the work. You will also need to provide the justification for the author change during the submission process.  Change in the author list is considered rare and exceptional, and the decision to allow such changes rests with the Editor. Once the list and order of authors has been established, the list and order of authors should not be altered without permission of all living authors of that article.
+
+We sincerely hope you will update your manuscript and resubmit soon. Please contact me if you have any questions.
+
+Thank you for your interest in IEEE Access.
+
+Sincerely,
+
+Prof. Lukasz Wisniewski
+Associate Editor, IEEE Access
+lukasz.wisniewski@th-owl.de
+
+Reviewers' Comments to Author:
+
+Reviewer: 1
+
+Comments:
+Thank you for submitting your manuscript. Framing telemetry density as a controllable resource is an interesting idea, and I appreciate the limitations section and the reporting of negative results. However, the current evidence does not support the strength of the claims made in the Abstract and Conclusion.
+I have limited my requests to five specific items:
+1. Correct the headline claims and reconcile the numbers with your own tables.
+The Abstract and Conclusion state that the adaptive policy retains ~91% of the F1-score and ~83% of the recall at ~30% of the communication volume. These figures come from a mean over seven scenarios, three of which contain no theft and are scored as zero by convention. According to Table 5, on the four theft-bearing scenarios the adaptive policy uses 58,186 bytes against 135,162 for fixed_dense (about 43%, not 30%). In persistent_theft there is no reduction at all (135,332 bytes in both cases), and in intermittent_evening recall falls to 0.4581. In addition, Section VI-F reports F1 = 0.869 at 30,635 bytes for the configuration used in the paper on the three grid scenarios, whereas the mean of the corresponding entries in Table 5 (intermittent_evening, peak_theft, night_theft) is approximately F1 = 0.843 at 32,471 bytes. I recommend: (a) revise the Abstract and Conclusion to report results on theft-bearing scenarios, with per-scenario ranges; (b) explain or correct the discrepancy between Section VI-F and Table 5.
+2. Add budget-matched baselines. fixed_short (15 min) costs more than the adaptive policy (47,621 vs. 40,646 bytes), so showing that it is “dominated” is not informative. Moreover, under your cost model every transmission with a gap longer than 15 minutes pays the 40-byte signaling overhead, so cost does not scale linearly with cadence. I recommend: add fixed-cadence policies whose cost brackets that of the adaptive policy (by my estimate, roughly 25–30 min cadences), and at least one simple non-learning adaptive baseline (e.g., escalating to dense observation when the relative power divergence exceeds a fixed threshold). Include them in Tables 4 and 5 and plot them in Fig. 5 against the Pareto frontier.
+
+3. Report episode-level detection metrics. Eq. (1) is an instant-level recall, which for any fixed policy is largely determined by its sampling fraction. For forensic purposes, what matters is whether each theft episode is detected and how quickly. I recommend: define a theft episode (e.g., a contiguous run of theft ticks) and report, for all policies in the four theft-bearing scenarios: the episode detection rate, the median and maximum detection delay (in minutes), and the total duration of theft that elapsed undetected.
+4. Provide multi-seed results with confidence intervals. All results come from a single fixed seed and one week per scenario, yet differences of about one percentage point (0.869 vs. 0.878 in Section VI-F) and a 6.4% trade-off between fusion strategies (Section VI-D) are interpreted as meaningful. I recommend: repeat the campaign with at least 30 independent seeds and report mean ± 95% confidence intervals in Tables 4, 5, and 6, and show the variability in Fig. 5. Include a paired statistical comparison between the adaptive policy and the best budget-matched fixed baseline from item 2. Remove or qualify any claim not supported by non-overlapping intervals.
+
+5. Specify the evaluation protocol and the orchestration logic explicitly. Several points cannot currently be determined from the text: whether the policy-level metrics are computed on the full timeline, including the 70% chronological training portion used to fit the logistic regression (Section VI-B); whether the rolling features (60/120-min windows, hour-slot recurrence) are computed from the emitted samples only or from the native 5-min grid, which matters in basal mode; whether a separate classifier is trained per scenario, which makes the classifier a constant predictor in four of the seven scenarios (Section IV-H); the PolicyOrchestrator rules (hysteresis, dwell time, return to basal), which Algorithm 1 does not show. I recommend: add a subsection (or an appendix) that answers each of these points, and a pseudo-code or table describing the orchestration rules and thresholds. If the metrics currently include training data, report them on held-out data only.
+
+
+In summary, the idea has merit, but the manuscript requires additional experiments and a more measured presentation of its results.
+
+
+Additional Questions:
+Please confirm that you have reviewed all relevant files, including supplementary files and any author response files, which can be found in the "View Author's Response" link above (author responses will only appear for resubmissions): Yes, all files have been reviewed
+
+1) Does the paper contribute to the body of knowledge?: The paper makes a moderate conceptual contribution by framing telemetry density as a controllable resource, in which a theft-risk estimate drives the observation window of an NB-IoT forensic meter, and by explicitly characterizing the detection-versus-communication trade-off through a Pareto analysis. To my knowledge, this closed-loop framing is not addressed in the cited smart-metering and adaptive-telemetry literature, and the limitations section and the reporting of a negative result (context_aware fusion) are valuable. However, the individual components (rule-based and logistic-regression risk engines, probability fusion, a hysteresis policy) are standard, and the evidence supporting the added value is currently insufficient: the headline results are averaged over scenarios that include three theft-free ones, the baselines are not budget-matched, results come from a single seed on purely synthetic data, and no episode-level metrics are reported.
+
+2) Is the paper technically sound?: The overall framework is coherent and the paper is transparent about several of its limitations, but the technical evidence does not yet support the strength of the conclusions. The headline figures (about 91% of the F1-score and 83% of the recall at about 30% of the communication volume) come from a mean over seven scenarios, three of which contain no theft and are scored as zero. On the four theft-bearing scenarios, the adaptive policy uses roughly 43% of the dense policy’s bytes, with no savings in persistent_theft and a recall of 0.458 in intermittent_evening. There is also a numerical discrepancy between Section VI-F and Table 5. The comparison baselines are not budget-matched (the 15-minute fixed policy costs more than the adaptive one), the instant-level recall largely reflects sampling density rather than forensic detection capability, and all results come from a single random seed on purely synthetic data. In addition, the evaluation protocol is ambiguous (possible inclusion of training data in the policy-level metrics, unclear feature computation under sparse sampling, per-scenario classifiers that are constant predictors in four scenarios) and the orchestration logic is not specified.
+
+3) Is the subject matter presented in a comprehensive manner?: The manuscript is generally well organized and covers a broad set of elements: system model, architecture, synthetic-data generation, risk engines, fusion strategies, a communication-cost model, a Pareto analysis, a scalability benchmark, and a limitations section. However, the presentation is not yet comprehensive where it matters most for verification. The evaluation protocol is ambiguous (whether policy-level metrics include training data, how rolling features are computed under sparse sampling, and the fact that per-scenario classifiers are constant predictors in four scenarios), and the PolicyOrchestrator logic (hysteresis, dwell time, return to basal) is not specified, which prevents the reader from reproducing the policy. Forensically relevant outcomes such as episode-level detection and detection delay are missing, the headline results are not reported on the theft-bearing scenarios with per-scenario ranges, and the baselines do not cover budget-matched or simple non-learning alternatives.
+
+4) Are the references provided applicable and sufficient?: The reference list (40 items) is mostly recent and relevant to the three research lines the paper positions itself against: energy-theft/NTL detection, digital twins for smart metering, and NB-IoT/LPWAN telemetry and measurement studies.
+
+5) Are there references that are not appropriate for the topic being discussed?: No
+
+5a) If yes, then please indicate which references should be removed.:
+
+
+Reviewer: 2
+
+Comments:
+This paper proposes a digital-twin-driven framework for energy-theft detection. Overall, the topic is interesting, and the experiments are thorough. However, some modules are not clearly explained, meaning the readability could be further improved.
+
+Major Points
+(1) The contribution of this paper is unclear, and the study appears to be an existing framework embedded with several slightly improved strategies. Furthermore, the concept of a "digital twin" is not clearly articulated. The reviewer is curious as to whether there is any interaction between the physical and virtual entities.
+
+(2) Some expressions need to be consistent to increase the readability of the manuscript, such as "Equation (1)" versus "Eq. (1)," and "Figure 2" versus "Fig. 2". In addition, it would be better to use Times New Roman for the text in the figures.
+
+(3) The logical structure in Figure 3 is not clear enough and needs to be reorganized and improved if possible.
+
+(4) In Figure 4, additional machine learning baseline models should be introduced and analyzed.
+
+(5) The results in Figure 5 require further analysis. Additionally, the method used to determine the Pareto front needs to be clarified, and it should be addressed whether a smooth curve could be fitted to it.
+
+
+Additional Questions:
+Please confirm that you have reviewed all relevant files, including supplementary files and any author response files, which can be found in the "View Author's Response" link above (author responses will only appear for resubmissions): Yes, all files have been reviewed
+
+1) Does the paper contribute to the body of knowledge?: Yes
+
+2) Is the paper technically sound?: Yes
+
+3) Is the subject matter presented in a comprehensive manner?: Yes
+
+4) Are the references provided applicable and sufficient?: Yes
+
+5) Are there references that are not appropriate for the topic being discussed?: No
+
+5a) If yes, then please indicate which references should be removed.:
+
+
+Reviewer: 3
+
+Comments:
+Thank you for a clearly written paper on a practical problem. Using theft risk to control how densely a forensic device reports is a sensible idea, and I appreciated the explicit treatment of what the twin implementation does and does not satisfy. My main concerns are about evaluation design. In its current form, I cannot tell how much of the reported performance would survive deployment.
+
+Major:
+
+The supervised baseline appears to be trained per scenario (Section IV-H). In the theft-free scenarios this produces a constant “no theft” predictor, and in persistent_theft a constant “theft” predictor. A deployed twin cannot know its scenario. Please train one model across scenarios and evaluate on held-out scenarios, for example leave-one-scenario-out.
+Policy-level metrics are computed over t = 1..T, which seems to include the training portion. The fixed_dense recall of 1.0000 vs a held-out classifier recall of 0.9815 in intermittent_evening suggests training data is being scored. Please report policy metrics on held-out time only.
+Please run multiple seeds and report confidence intervals. Given the roughly 1 s runtime per twin, this is inexpensive. Several conclusions, including the Pareto comparison and the fusion ablation, rest on differences of one to two F1 points.
+Please report false-positive rate and the time spent in elevated modes for the theft-free scenarios. Setting F1 to zero there hides the most operationally relevant behavior.
+Since the device already stores historical profiles locally, please compare against a “log densely, transmit sparsely, backfill on alert” baseline, or explain why it isn’t viable. This bears directly on the intermittent_evening result.
+BLE fallback requires an operator on site, so please cost it accordingly or report it separately from NB-IoT bytes.
+
+Minor:
+7. Specify τ in Eq. (1), the rule-engine scoring, the context_aware weights, and the hysteresis down-switching and dwell rules.
+8. Replace the zero-padded seven-scenario means with pooled metrics over theft-bearing scenarios. State the theft-bearing byte reduction (about 57%) alongside the 70.5% figure in the abstract.
+9. Clarify how the critical-slot scores treat theft-free scenarios. A binary score of 0.5714 and a relaxed score of 0.9496 seem to use different conventions.
+10. Consider adding customer-level detection and time-to-first-flag metrics.
+11. Tabulate the full feature set.
+12. Shorten Section VI-G and drop the O(T²) bug-fix narrative.
+13. Editorial fixes: “Table 5” should be “Table 4” in Section VI-C; Fig. 3 is missing fixed_dense; two subsections are titled “Computational complexity and scalability”; the template placeholders (Volume 11, 2023; DOI ACCESS.2017) remain.
+14. Reproducibility is listed as a contribution, so please deposit the code and synthetic data publicly (e.g., Code Ocean or Zenodo) rather than offering them on request.
+15. Situate the policy against event-triggered and adaptive sampling work, and consider the additional references suggested in the review form.
+
+Additional Questions:
+Please confirm that you have reviewed all relevant files, including supplementary files and any author response files, which can be found in the "View Author's Response" link above (author responses will only appear for resubmissions): Yes, all files have been reviewed
+
+1) Does the paper contribute to the body of knowledge?: Yes, with qualifications. Treating telemetry density as a control variable driven by theft risk is a reasonable and practical angle. Most NTL work assumes the data stream is fixed and only works on the classifier. The idea of a twin that decides when to look harder is useful for utilities running NB-IoT forensic devices, and the positioning in Section II and Table 1 is clear.
+
+The contribution is narrower than the framing suggests, though. The decision logic is a weighted average of a rule score and a logistic regression, mapped to three modes through two thresholds. That is essentially threshold-based event-triggered sampling, and the paper doesn’t relate it to the existing adaptive and event-triggered sampling literature in sensor networks. All of the evidence is also synthetic, from one seed per scenario, so the contribution currently amounts to a well-documented architecture plus a simulation study. It is not yet a validated method. The forensic use case is credible and the utility partnership is a strength. The paper would be much stronger with even a small, anonymized slice of the EDP field data.
+
+2) Is the paper technically sound?: Not yet. Two issues affect how the headline numbers should be read.
+
+First, the supervised model appears to be trained per scenario. Section IV-H says the logistic regression falls back to constant prediction when a scenario’s training split has one class, and lists normal, persistent_theft, disturbance_without_theft and degraded_link_no_theft. That means the model in the theft-free scenarios is told, in effect, that theft never happens. In persistent_theft it is told that theft always happens. This explains the perfect 1.0000 F1 in persistent_theft and the absence of any escalation in the theft-free runs (17,736 bytes in both normal and disturbance_without_theft, which matches basal-only transmission). A deployed twin will not know which scenario it is in. The model has to be trained across scenarios and tested on held-out ones, for example with leave-one-scenario-out evaluation.
+
+Second, the policy-level metrics are computed over the full horizon t = 1..T, which seems to include the 70% chronological training portion. fixed_dense reaches recall 1.0000 in intermittent_evening, while the same classifier reaches 0.9815 on the held-out test split. That gap is consistent with training data being scored. Policy-level results should be reported on held-out time only.
+
+Other technical points:
+
+The flagging threshold τ in Eq. (1) is never given a value. The rule-engine weights, the context_aware weights, and the down-switching and dwell logic of the hysteresis are also unspecified, so the policy cannot be reproduced from the text.
+With a single seed, differences like 0.9928 vs 0.9976 F1, or the 1-point gap between the used configuration and the Pareto frontier, cannot be interpreted. A full run takes about 1 s per twin, so 20–30 seeds with confidence intervals is cheap and should be done for this submission rather than deferred to future work.
+Section IV-B says the device already keeps local persistence and historical profiles. A strong and obvious baseline is therefore to log at 5 minutes locally, transmit sparsely, and pull the dense buffer when risk rises. That approach would likely recover most of the recall lost in intermittent_evening (0.4581). The paper should either compare against it or explain why it isn’t feasible.
+BLE fallback is costed as cheap bytes (20 bytes overhead, 120 ms), but the paper itself says it requires a local operator. A truck roll is not a low-cost transmission. Treat it as deferred data with an operational cost, or report it separately.
+Tick-level recall is not the quantity a utility acts on. Customer-level detection and time-to-first-flag after theft onset would say more about forensic value.
+
+3) Is the subject matter presented in a comprehensive manner?: Mostly. The writing is careful, and the paper is unusually explicit about what the twin does and doesn’t do (Section IV-C). The limitations section is honest. The main gaps are in reporting:
+
+False alarms in theft-free scenarios are hidden. Because F1 is set to zero when there are no positives, the reader cannot see how often the twin escalated or flagged without cause. That is arguably the most important operational number, since most installations in a real fleet are theft-free. Please report false-positive rate and the share of time spent in moderate/aggressive mode per scenario.
+Averaging F1 with structural zeros (Table 4) produces numbers like 0.5545 that mean little. The observation that the retention ratio is unchanged is then trivially true. Pooled (micro-averaged) metrics over theft-bearing scenarios, plus FPR on theft-free ones, would be clearer.
+The 70.5% byte reduction is driven largely by the theft-free scenarios. In theft-bearing scenarios the reduction is about 57% (58,186 vs 135,162 bytes). Both figures should appear in the abstract.
+The critical-slot numbers seem inconsistent. A binary score of 0.5714 equals 4/7, which implies the theft-free scenarios score zero. But a relaxed score of 0.9496 exceeds 4/7, which implies they don’t. Please state the convention.
+Section VI-G (scalability) adds little. About 1 s for 2,016 events in sequential Python is expected, and the O(T²) bug fix doesn’t belong in the paper. This section could be cut to a sentence.
+The full feature list (eight features, judging by “five remaining”) should be tabulated.
+Editorial issues: the text refers to “the mean values in Table 5” where Table 4 is meant. Fig. 3 omits fixed_dense. Two subsections share the title “Computational complexity and scalability.” The template placeholders (Volume 11, 2023; DOI ACCESS.2017) are still in place. Eq. (3) is introduced and then set aside, so either connect the frontier to λ1/λ2 or shorten it.
+
+4) Are the references provided applicable and sufficient?: The references are generally applicable, and none are self-citations. A few are from lower-rigor venues ([11], [19], [20]) and could be replaced or supplemented with stronger sources. The coverage is missing three things: foundational NTL work, a standard digital-twin reference, and the adaptive-sampling literature, which is the closest prior art to the core idea. Suggested additions:
+
+P. Jokar, N. Arianpoo, and V. C. M. Leung, “Electricity theft detection in AMI using customers’ consumption patterns,” IEEE Trans. Smart Grid, vol. 7, no. 1, pp. 216–226, 2016, doi: 10.1109/TSG.2015.2425222.
+Z. Zheng, Y. Yang, X. Niu, H.-N. Dai, and Y. Zhou, “Wide and deep convolutional neural networks for electricity-theft detection to secure smart grids,” IEEE Trans. Ind. Informat., vol. 14, no. 4, pp. 1606–1615, 2018, doi: 10.1109/TII.2017.2785963.
+G. M. Messinis and N. D. Hatziargyriou, “Review of non-technical loss detection methods,” Electr. Power Syst. Res., vol. 158, pp. 250–266, 2018, doi: 10.1016/j.epsr.2018.01.005.
+P. Glauner, J. A. Meira, P. Valtchev, R. State, and F. Bettinger, “The challenge of non-technical loss detection using artificial intelligence: A survey,” Int. J. Comput. Intell. Syst., vol. 10, no. 1, pp. 760–775, 2017, doi: 10.2991/ijcis.2017.10.1.51.
+F. Tao, H. Zhang, A. Liu, and A. Y. C. Nee, “Digital twin in industry: State-of-the-art,” IEEE Trans. Ind. Informat., vol. 15, no. 4, pp. 2405–2415, 2019, doi: 10.1109/TII.2018.2873186.
+C. Alippi, G. Anastasi, M. Di Francesco, and M. Roveri, “An adaptive sampling algorithm for effective energy management in wireless sensor networks with energy-hungry sensors,” IEEE Trans. Instrum. Meas., vol. 59, no. 2, pp. 335–344, 2010, doi: 10.1109/TIM.2009.2023818.
+
+5) Are there references that are not appropriate for the topic being discussed?: No
+
+5a) If yes, then please indicate which references should be removed.:
+
+If you have any questions, please contact article administrator: Miss Manpreet Kaur m.kaur@ieee.org
