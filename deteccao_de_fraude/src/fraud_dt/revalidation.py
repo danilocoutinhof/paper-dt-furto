@@ -21,7 +21,7 @@ evaluated in every stage.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -30,7 +30,7 @@ from scipy.stats import wilcoxon
 
 from .comparison import ComparisonSettings
 from .config import build_config
-from .control import PolicyOrchestrator
+from .control import EvidenceCapOrchestrator, FixedCadenceOrchestrator, PolicyOrchestrator
 from .decision import DecisionEngine, build_fusion_strategies
 from .decision.fusion import WeightedProbabilityFusion
 from .devices import MockTransport, estimate_communication_cost
@@ -78,6 +78,7 @@ class Protocol:
     random_phase: bool
     feature_mode: str  # "native" (v1) | "emitted"
     description: str
+    phase_a: bool = False  # also run the Phase A policy variants
 
 
 STAGES: dict[str, Protocol] = {
@@ -86,6 +87,7 @@ STAGES: dict[str, Protocol] = {
     "E2": Protocol("E2", "global", True, False, "native", "+ causal slot_recurrence"),
     "E3": Protocol("E3", "global", True, True, "native", "+ random sampling phase and theft-onset jitter"),
     "E4": Protocol("E4", "global", True, True, "emitted", "+ features from received samples only"),
+    "E5": Protocol("E5", "global", True, True, "emitted", "E4 + Phase A variants (backfill, basal period, evidence cap)", phase_a=True),
 }
 
 
@@ -133,8 +135,16 @@ def _fused_weighted(risk: pd.Series | np.ndarray, supervised: pd.Series | np.nda
     return np.clip(values, 0.0, 0.99)
 
 
+def _received_mask(df: pd.DataFrame) -> np.ndarray:
+    """Samples available at the back-office: live emissions plus, for the
+    backfill policies (Phase A), samples retrieved later from the device's
+    local buffer."""
+    column = "received" if "received" in df.columns else "observed"
+    return df[column].to_numpy() == 1
+
+
 def _detection_counts(df: pd.DataFrame, probability_column: str, threshold: float) -> dict:
-    observed = df["observed"].to_numpy() == 1
+    observed = _received_mask(df)
     y_true = df["theft_active"].to_numpy().astype(int) == 1
     y_pred = (df[probability_column].to_numpy() >= threshold) & observed
     tp = int((y_pred & y_true).sum())
@@ -153,6 +163,7 @@ def _detection_counts(df: pd.DataFrame, probability_column: str, threshold: floa
         "recall": recall,
         "f1": f1,
         "fpr": fp / (fp + tn) if fp + tn else 0.0,
+        "theft_received": int((observed & y_true).sum()),
     }
 
 
@@ -174,24 +185,41 @@ def theft_episodes(df: pd.DataFrame) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
 
 
 def _episode_metrics(df: pd.DataFrame, probability_column: str, threshold: float, episodes: list) -> dict:
-    """Episode-level detection (R1.3): an episode is detected when the policy
-    raises at least one flag (observed sample with probability >= threshold)
-    inside it; the delay is the time from episode start to the first flag;
-    undetected minutes add the delay of detected episodes and the full
-    duration of missed ones."""
+    """Episode-level detection (R1.3): an episode is detected when at least
+    one sample inside it is received and flagged (probability >= threshold).
+    The delay runs from the episode start to the moment the first such flag
+    became known at the back-office (`known_at`; equal to the sample time for
+    live emissions, and to the backfill time for samples retrieved later).
+    Undetected minutes add, per episode, the time until detection (capped at
+    the episode duration) or the full duration of missed episodes."""
     if not episodes:
-        return {"episodes": 0, "episodes_detected": 0, "delay_sum_min": 0.0, "delay_max_min": np.nan, "undetected_theft_min": 0.0}
-    flags = (df[probability_column].to_numpy() >= threshold) & (df["observed"].to_numpy() == 1)
-    flag_times = np.sort(df.loc[flags, "timestamp"].to_numpy())
+        return {
+            "episodes": 0, "episodes_detected": 0, "delay_sum_min": 0.0, "delay_max_min": np.nan,
+            "undetected_theft_min": 0.0, "episodes_detected_live": 0, "delay_live_sum_min": 0.0,
+        }
+    flags = (df[probability_column].to_numpy() >= threshold) & _received_mask(df)
+    sample_times = df["timestamp"].to_numpy()[flags]
+    known_column = "known_at" if "known_at" in df.columns else "timestamp"
+    known_times = pd.to_datetime(df[known_column]).to_numpy()[flags]
+    order = np.argsort(sample_times)
+    sample_times, known_times = sample_times[order], known_times[order]
+    live = known_times == sample_times
     detected, delays, undetected = 0, [], 0.0
+    detected_live, delays_live = 0, []
     for start, end in episodes:
-        position = np.searchsorted(flag_times, start.to_datetime64(), side="left")
+        lo = np.searchsorted(sample_times, start.to_datetime64(), side="left")
+        hi = np.searchsorted(sample_times, end.to_datetime64(), side="left")
         duration = (end - start) / pd.Timedelta(minutes=1)
-        if position < len(flag_times) and flag_times[position] < end.to_datetime64():
-            delay = (pd.Timestamp(flag_times[position]) - start) / pd.Timedelta(minutes=1)
+        if hi > lo:
+            first_known = pd.Timestamp(known_times[lo:hi].min())
+            delay = (first_known - start) / pd.Timedelta(minutes=1)
             detected += 1
             delays.append(delay)
-            undetected += delay
+            undetected += min(delay, duration)
+            live_in_episode = sample_times[lo:hi][live[lo:hi]]
+            if len(live_in_episode):
+                detected_live += 1
+                delays_live.append((pd.Timestamp(live_in_episode.min()) - start) / pd.Timedelta(minutes=1))
         else:
             undetected += duration
     return {
@@ -200,6 +228,8 @@ def _episode_metrics(df: pd.DataFrame, probability_column: str, threshold: float
         "delay_sum_min": float(sum(delays)),
         "delay_max_min": float(max(delays)) if delays else np.nan,
         "undetected_theft_min": float(undetected),
+        "episodes_detected_live": detected_live,
+        "delay_live_sum_min": float(sum(delays_live)),
     }
 
 
@@ -333,6 +363,201 @@ def run_realization(protocol: Protocol, scenario_index: int, replicate: int, mod
                     **_episode_metrics(adaptive_df, source, settings.prediction_threshold, episodes),
                 }
             )
+    if protocol.phase_a:
+        rows.extend(_phase_a_rows(protocol, df, model, base, settings, episodes, config, offset, seed))
+    return rows
+
+
+# --- Phase A: backfill, basal period, evidence cap ---------------------------------
+
+BACKFILL_HOURS = 2.0
+"""On every flagged live sample, the back-office requests the device's local
+5-min records not yet received, at most BACKFILL_HOURS back (the full window
+at alert onset, the gap since the last retrieval afterwards)."""
+
+EVIDENCE_CAP_MINUTES = 120
+
+
+@dataclass(frozen=True)
+class BackfillCostModel:
+    """Cost of retrieving buffered records in a batch (Phase A hypothesis, to
+    be calibrated on the bench test). Conservative: each record costs as
+    much as a live sample payload; records are packed into messages of up to
+    `records_per_message`; the session is already open because the request
+    follows the live sample that raised the alert (no extra RRC setup);
+    each message can be retransmitted with the nominal-link probability."""
+
+    record_bytes: int = 64
+    records_per_message: int = 16
+    retransmission_probability: float = 0.04
+    max_retransmissions: int = 3
+
+    def cost(self, n_records: int, rng: np.random.Generator) -> int:
+        total = 0
+        remaining = n_records
+        while remaining > 0:
+            batch = min(remaining, self.records_per_message)
+            retransmissions = 0
+            while retransmissions < self.max_retransmissions and rng.random() < self.retransmission_probability:
+                retransmissions += 1
+            total += batch * self.record_bytes * (1 + retransmissions)
+            remaining -= batch
+        return total
+
+
+@dataclass(frozen=True)
+class PhaseAVariant:
+    name: str
+    adaptive: bool
+    basal_minutes: int
+    backfill: bool = False
+    evidence_cap: bool = False
+
+
+PHASE_A_VARIANTS = [
+    PhaseAVariant("adaptive_b60", True, 60),
+    PhaseAVariant("adaptive_b40", True, 40),
+    PhaseAVariant("adaptive_b30", True, 30),
+    PhaseAVariant("adaptive_b20", True, 20),
+    PhaseAVariant("adaptive_b15", True, 15),
+    PhaseAVariant("adaptive_b15_cap", True, 15, evidence_cap=True),
+    PhaseAVariant("adaptive_b60_cap", True, 60, evidence_cap=True),
+    PhaseAVariant("adaptive_b30_cap", True, 30, evidence_cap=True),
+    PhaseAVariant("adaptive_b60_bf", True, 60, backfill=True),
+    PhaseAVariant("adaptive_b30_bf", True, 30, backfill=True),
+    PhaseAVariant("adaptive_b60_bf_cap", True, 60, backfill=True, evidence_cap=True),
+    PhaseAVariant("adaptive_b30_bf_cap", True, 30, backfill=True, evidence_cap=True),
+    PhaseAVariant("fixed_60_bf", False, 60, backfill=True),
+    PhaseAVariant("fixed_30_bf", False, 30, backfill=True),
+]
+
+
+def _score_with_weighted_fusion(rows: pd.DataFrame, model: FrozenSupervisedModel | None, emitted: bool) -> np.ndarray:
+    if emitted:
+        rows = _rescore_received(rows, model)
+        return rows.set_index("timestamp")["fused_weighted_probability"]
+    return pd.Series(_fused_weighted(rows["risk_probability"], rows["supervised_probability"]), index=rows["timestamp"].to_numpy())
+
+
+def run_variant(
+    variant: PhaseAVariant,
+    df: pd.DataFrame,
+    model: FrozenSupervisedModel | None,
+    config,
+    emitted: bool,
+    first_emit_time: pd.Timestamp | None,
+    threshold: float,
+    rng: np.random.Generator,
+    cost_model: BackfillCostModel = BackfillCostModel(),
+) -> tuple[pd.DataFrame, dict]:
+    """Runs one Phase A policy through the closed loop and returns the
+    evaluation frame (with `received`/`known_at`) and backfill accounting."""
+    policy = replace(config.policy, basal_minutes=variant.basal_minutes)
+    variant_config = replace(config, policy=policy)
+    if not variant.adaptive:
+        orchestrator = FixedCadenceOrchestrator(policy=policy, thresholds=config.thresholds)
+    elif variant.evidence_cap:
+        orchestrator = EvidenceCapOrchestrator(policy=policy, thresholds=config.thresholds, cap_minutes=EVIDENCE_CAP_MINUTES)
+    else:
+        orchestrator = PolicyOrchestrator(policy=policy, thresholds=config.thresholds)
+    runner = SimulationRunner(
+        config=variant_config,
+        decision_engine=DecisionEngine(thresholds=config.thresholds, fusion_strategy=WeightedProbabilityFusion()),
+        orchestrator=orchestrator,
+        transport=MockTransport(ble_available=True),
+    )
+
+    state = OnlineFeatureState() if emitted else None
+    live_times: set = set()
+    backfilled: dict = {}
+    events: list[tuple[pd.Timestamp, int]] = []
+    memory = {"previous_flag": False, "backfilled_until": df["timestamp"].iloc[0] - pd.Timedelta(days=1)}
+    window_length = pd.Timedelta(hours=BACKFILL_HOURS)
+
+    def scorer(record: dict) -> dict:
+        record = state.update(record)
+        record["risk_probability"] = score_rule_based_record(record)
+        record["supervised_probability"] = model.predict_record(record)
+        return record
+
+    def on_decision(timestamp: pd.Timestamp, record: dict, decision) -> None:
+        live_times.add(timestamp)
+        flag = decision.decision_probability >= threshold
+        if variant.backfill and flag:
+            # While the alert is active, every flagged live sample pulls the
+            # buffered records not yet received since the previous retrieval
+            # (at most BACKFILL_HOURS back). At alert onset this recovers the
+            # run-up to the alert; afterwards it fills the gaps of a sparse
+            # live cadence ("log densely, transmit sparsely, backfill on alert").
+            start = max(timestamp - window_length, memory["backfilled_until"])
+            window = df[(df["timestamp"] >= start) & (df["timestamp"] < timestamp)]
+            missing = window[~window["timestamp"].isin(live_times) & ~window["timestamp"].isin(backfilled.keys())]
+            for sample_time in missing["timestamp"]:
+                backfilled[sample_time] = timestamp
+            if len(missing):
+                events.append((timestamp, int(len(missing))))
+            memory["backfilled_until"] = timestamp
+            if state is not None and len(missing):
+                state.ingest_past(missing.to_dict("records"))
+        memory["previous_flag"] = flag
+
+    timeline, *_ = runner.run(
+        df,
+        first_emit_time=first_emit_time,
+        online_scorer=scorer if emitted else None,
+        on_decision=on_decision,
+    )
+    evaluation = timeline.copy()
+    evaluation["observed"] = evaluation["observed"].astype(int)
+    evaluation["received"] = evaluation["observed"]
+    evaluation["known_at"] = evaluation["timestamp"]
+    if backfilled:
+        mask = evaluation["timestamp"].isin(backfilled.keys())
+        evaluation.loc[mask, "received"] = 1
+        evaluation.loc[mask, "known_at"] = evaluation.loc[mask, "timestamp"].map(backfilled)
+        received_times = evaluation.loc[evaluation["received"] == 1, "timestamp"]
+        union = df[df["timestamp"].isin(received_times)].copy()
+        scored = _score_with_weighted_fusion(union, model, emitted)
+        evaluation.loc[mask, "decision_probability"] = evaluation.loc[mask, "timestamp"].map(scored).to_numpy()
+
+    backfill_records = int(sum(n for _, n in events))
+    backfill_bytes = int(sum(cost_model.cost(n, rng) for _, n in events))
+    accounting = {
+        "backfill_events": len(events),
+        "backfill_records": backfill_records,
+        "backfill_bytes": backfill_bytes,
+    }
+    return evaluation, accounting
+
+
+def _phase_a_rows(protocol: Protocol, df: pd.DataFrame, model, base: dict, settings: ComparisonSettings, episodes: list, config, offset: int, seed: int) -> list[dict]:
+    emitted = protocol.feature_mode == "emitted"
+    t0 = df["timestamp"].iloc[0]
+    first_emit_time = t0 + pd.Timedelta(minutes=offset) if offset else None
+    rows = []
+    for index, variant in enumerate(PHASE_A_VARIANTS):
+        rng = np.random.default_rng([seed, 31337, index])
+        evaluation, accounting = run_variant(
+            variant, df, model, config, emitted, first_emit_time, settings.prediction_threshold, rng
+        )
+        cost = _cost_summary(evaluation, settings)
+        live_bytes = cost["communication_bytes"]
+        cost["communication_bytes"] = live_bytes + accounting["backfill_bytes"]
+        rows.append(
+            {
+                **base,
+                "policy_name": variant.name,
+                "probability_source": "decision_probability",
+                "fusion_strategy": "weighted",
+                "cadence_min": variant.basal_minutes,
+                **cost,
+                "live_bytes": live_bytes,
+                **accounting,
+                **_mode_stats(evaluation["observation_mode"]),
+                **_detection_counts(evaluation, "decision_probability", settings.prediction_threshold),
+                **_episode_metrics(evaluation, "decision_probability", settings.prediction_threshold, episodes),
+            }
+        )
     return rows
 
 
@@ -376,17 +601,23 @@ def macro_seven(runs: pd.DataFrame) -> pd.DataFrame:
     return _summarize(per_rep, KEY, ["f1", "recall", "precision", "communication_bytes"])
 
 
-EPISODE_SUM_COLUMNS = ["episodes", "episodes_detected", "delay_sum_min", "undetected_theft_min"]
+EPISODE_SUM_COLUMNS = ["episodes", "episodes_detected", "delay_sum_min", "undetected_theft_min", "theft_received", "episodes_detected_live", "delay_live_sum_min"]
 
 
 def _add_episode_rates(per_rep: pd.DataFrame, n_scenarios: int) -> pd.DataFrame:
     per_rep["episode_detection_rate"] = per_rep["episodes_detected"] / per_rep["episodes"].replace(0, np.nan)
     per_rep["mean_delay_min"] = per_rep["delay_sum_min"] / per_rep["episodes_detected"].replace(0, np.nan)
     per_rep["undetected_theft_min_per_scenario"] = per_rep["undetected_theft_min"] / n_scenarios
+    per_rep["evidence_received"] = per_rep["theft_received"] / (per_rep["tp"] + per_rep["fn"]).replace(0, np.nan)
+    per_rep["episode_detection_live_rate"] = per_rep["episodes_detected_live"] / per_rep["episodes"].replace(0, np.nan)
+    per_rep["mean_delay_live_min"] = per_rep["delay_live_sum_min"] / per_rep["episodes_detected_live"].replace(0, np.nan)
     return per_rep
 
 
-EPISODE_METRICS = ["episode_detection_rate", "mean_delay_min", "delay_max_min", "undetected_theft_min_per_scenario"]
+EPISODE_METRICS = [
+    "episode_detection_rate", "mean_delay_min", "delay_max_min", "undetected_theft_min_per_scenario",
+    "evidence_received", "episode_detection_live_rate", "mean_delay_live_min",
+]
 
 
 def theft_macro4(runs: pd.DataFrame) -> pd.DataFrame:
@@ -418,7 +649,7 @@ def theft_free(runs: pd.DataFrame) -> pd.DataFrame:
     """False-alarm behavior on the three theft-free scenarios (mean per scenario)."""
     clean = runs[runs["scenario"].isin(NO_THEFT_SCENARIOS)].copy()
     metrics = ["fpr", "fp", "communication_bytes"]
-    for column in ["share_elevated", "share_aggressive", "escalations"]:
+    for column in ["share_elevated", "share_aggressive", "escalations", "backfill_events", "backfill_bytes"]:
         if column in clean.columns:
             metrics.append(column)
     per_rep = clean.groupby(KEY + ["replicate"], as_index=False)[metrics].mean()
@@ -434,7 +665,7 @@ def per_scenario(runs: pd.DataFrame) -> pd.DataFrame:
     return _summarize(per_rep, KEY + ["scenario"], metrics)
 
 
-def paired_against_fixed(runs: pd.DataFrame, fixed_source: str = "fused_weighted_probability") -> pd.DataFrame:
+def paired_against_fixed(runs: pd.DataFrame, fixed_source: str = "fused_weighted_probability", adaptive_key: tuple = ADAPTIVE_KEY) -> pd.DataFrame:
     """Adaptive (weighted, decision probability) vs every fixed cadence, paired
     by realization, on the theft-bearing scenarios (pooled per replicate).
     Wilcoxon signed-rank on the per-replicate differences, Holm-corrected."""
@@ -450,15 +681,15 @@ def paired_against_fixed(runs: pd.DataFrame, fixed_source: str = "fused_weighted
         mask = (pooled["policy_name"] == policy) & (pooled["probability_source"] == source) & (pooled["fusion_strategy"] == fusion)
         return pooled[mask].set_index("replicate").sort_index()
 
-    adaptive = _select(*ADAPTIVE_KEY)
+    adaptive = _select(*adaptive_key)
     rows = []
     for policy_name in FIXED_POLICIES:
         fixed = _select(policy_name, fixed_source, "not_applicable")
         common = adaptive.index.intersection(fixed.index)
         if len(common) == 0:
             continue
-        row = {"fixed_policy": policy_name, "fixed_source": fixed_source, "pairs": int(len(common))}
-        for metric in ["f1", "recall", "episode_detection_rate", "mean_delay_min", "undetected_theft_min_per_scenario", "communication_bytes"]:
+        row = {"policy": adaptive_key[0], "fixed_policy": policy_name, "fixed_source": fixed_source, "pairs": int(len(common))}
+        for metric in ["f1", "recall", "episode_detection_rate", "mean_delay_min", "undetected_theft_min_per_scenario", "evidence_received", "episode_detection_live_rate", "mean_delay_live_min", "communication_bytes"]:
             diff = adaptive.loc[common, metric].to_numpy(dtype=float) - fixed.loc[common, metric].to_numpy(dtype=float)
             if np.isnan(diff).all():
                 continue
@@ -476,7 +707,7 @@ def paired_against_fixed(runs: pd.DataFrame, fixed_source: str = "fused_weighted
                     row[f"p_{metric}"] = 1.0
         rows.append(row)
     table = pd.DataFrame(rows)
-    for metric in ["f1", "recall", "episode_detection_rate", "mean_delay_min", "undetected_theft_min_per_scenario"]:
+    for metric in ["f1", "recall", "episode_detection_rate", "mean_delay_min", "undetected_theft_min_per_scenario", "evidence_received", "episode_detection_live_rate", "mean_delay_live_min"]:
         column = f"p_{metric}"
         if column in table.columns and not table.empty:
             table[f"p_{metric}_holm"] = _holm(table[column].to_numpy())

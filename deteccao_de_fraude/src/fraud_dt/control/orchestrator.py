@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+import pandas as pd
 
 from fraud_dt.actions import TelemetryReconfigurationDecision
 from fraud_dt.config import ObservationPolicy, Thresholds
@@ -51,3 +53,49 @@ class PolicyOrchestrator:
             reason=reason,
             action=action,
         )
+
+
+@dataclass
+class EvidenceCapOrchestrator(PolicyOrchestrator):
+    """PolicyOrchestrator with an evidence cap (Phase A).
+
+    After `cap_minutes` of continuous aggressive observation, the twin
+    considers that enough dense evidence has been collected for the current
+    alert and falls back to the moderate cadence, staying there (not
+    returning to aggressive) until the risk drops to basal. Without the cap,
+    a persistent theft keeps the device in aggressive mode indefinitely and
+    costs as much as dense monitoring (reviewer 1, item 1). The device keeps
+    its local 5-min record anyway, so the dense profile remains retrievable.
+    """
+
+    cap_minutes: int = 120
+    _aggressive_since: pd.Timestamp | None = field(default=None, init=False, repr=False)
+    _capped: bool = field(default=False, init=False, repr=False)
+
+    def _select_mode(self, twin: ForensicTwin, decision: TwinDecision) -> str:
+        mode = super()._select_mode(twin, decision)
+        timestamp = pd.Timestamp(decision.timestamp)
+        if mode == "basal":
+            self._capped = False
+            self._aggressive_since = None
+            return mode
+        if self._capped:
+            return "moderate"
+        if mode == "aggressive":
+            if self._aggressive_since is None:
+                self._aggressive_since = timestamp
+            if timestamp - self._aggressive_since >= pd.Timedelta(minutes=self.cap_minutes):
+                self._capped = True
+                return "moderate"
+        else:
+            self._aggressive_since = None
+        return mode
+
+
+@dataclass
+class FixedCadenceOrchestrator(PolicyOrchestrator):
+    """Always keeps the basal cadence of `policy` (a fixed-cadence policy run
+    through the same closed loop, so it can share the backfill logic)."""
+
+    def _select_mode(self, twin: ForensicTwin, decision: TwinDecision) -> str:
+        return "basal"

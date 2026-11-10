@@ -33,6 +33,7 @@ class SimulationRunner:
         df: pd.DataFrame,
         first_emit_time: pd.Timestamp | None = None,
         online_scorer: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        on_decision: Callable[[pd.Timestamp, dict[str, Any], Any], None] | None = None,
     ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Runs the closed loop over the native timeline.
 
@@ -45,6 +46,9 @@ class SimulationRunner:
           and the rule/supervised probabilities recomputed from the samples
           received so far (stage E4). By default the precomputed native-grid
           values in `df` are used.
+        - `on_decision`: called after every decision on an emitted sample with
+          (timestamp, scored record, decision); used by the back-office
+          backfill logic (Phase A). Not called by default.
         """
         if df.empty:
             empty = pd.DataFrame()
@@ -106,6 +110,8 @@ class SimulationRunner:
                 device.apply_command(delivered_command)
                 snapshot = twin.snapshot(observation, decision)
                 last_decision = decision
+                if on_decision is not None:
+                    on_decision(timestamp, record, decision)
 
                 timeline_row["observation_mode"] = twin.current_mode
                 timeline_row["capture_period_minutes"] = twin.current_capture_period_minutes

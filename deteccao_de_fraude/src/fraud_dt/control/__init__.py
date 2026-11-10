@@ -1,3 +1,3 @@
-from .orchestrator import PolicyOrchestrator
+from .orchestrator import EvidenceCapOrchestrator, FixedCadenceOrchestrator, PolicyOrchestrator
 
-__all__ = ["PolicyOrchestrator"]
+__all__ = ["PolicyOrchestrator", "EvidenceCapOrchestrator", "FixedCadenceOrchestrator"]

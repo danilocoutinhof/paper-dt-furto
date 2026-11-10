@@ -150,6 +150,27 @@ class OnlineFeatureState:
 
         out = dict(record)
         out["rolling_divergence_mean"] = float(sum(recent) / len(recent))
+        self._latest = ts
         out["rolling_divergence_max"] = float(max(value for _, value in self._window))
         out["slot_recurrence"] = float(slot_recurrence)
         return out
+
+    def ingest_past(self, records: list[dict]) -> None:
+        """Adds samples that arrive late (backfill of the device's local
+        5-min buffer) to the history used by later live decisions. Their
+        timestamps precede the latest live sample, so they enter the rolling
+        windows (if still inside them) and the hour-of-day statistics."""
+        if not records:
+            return
+        from collections import deque
+
+        merged = list(self._window)
+        for record in records:
+            merged.append((pd.Timestamp(record["timestamp"]), float(record["relative_divergence"])))
+            hour = int(record["hour"])
+            self._slot_sum[hour] += float(record["divergence_flag"])
+            self._slot_count[hour] += 1
+        merged.sort(key=lambda item: item[0])
+        latest = getattr(self, "_latest", merged[-1][0])
+        cutoff = latest - pd.Timedelta(ROLLING_MAX_WINDOW)
+        self._window = deque(item for item in merged if item[0] > cutoff)
