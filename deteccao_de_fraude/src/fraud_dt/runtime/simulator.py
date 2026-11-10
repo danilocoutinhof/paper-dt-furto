@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 
@@ -11,6 +11,15 @@ from fraud_dt.decision import DecisionEngine
 from fraud_dt.devices import MockBillingMeter, MockForensicDevice, MockTransport
 from fraud_dt.twin import ForensicTwin
 
+ONLINE_FIELDS = (
+    "rolling_divergence_mean",
+    "rolling_divergence_max",
+    "slot_recurrence",
+    "risk_probability",
+    "supervised_probability",
+)
+"""Fields an `online_scorer` recomputes from the received samples."""
+
 
 @dataclass
 class SimulationRunner:
@@ -19,7 +28,24 @@ class SimulationRunner:
     orchestrator: PolicyOrchestrator
     transport: MockTransport
 
-    def run(self, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def run(
+        self,
+        df: pd.DataFrame,
+        first_emit_time: pd.Timestamp | None = None,
+        online_scorer: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """Runs the closed loop over the native timeline.
+
+        Optional revalidation hooks (both off by default, i.e. v1 behavior):
+        - `first_emit_time`: time of the device's first emission (random
+          sampling phase, stage E3). By default the device emits at the first
+          tick of the timeline.
+        - `online_scorer`: called on every *emitted* sample with the sample's
+          record; it returns the record with the history-dependent features
+          and the rule/supervised probabilities recomputed from the samples
+          received so far (stage E4). By default the precomputed native-grid
+          values in `df` are used.
+        """
         if df.empty:
             empty = pd.DataFrame()
             return empty, empty, empty, empty, empty
@@ -35,6 +61,8 @@ class SimulationRunner:
             dev_eui=twin.dev_eui,
             initial_capture_period_minutes=self.config.policy.basal_minutes,
         )
+        if first_emit_time is not None:
+            device.next_emit_time = pd.Timestamp(first_emit_time)
         billing_meter = MockBillingMeter(ordered_df[["timestamp", "dev_eui", "billing_active_power", "billing_active_energy"]].copy())
 
         timeline_rows: list[dict[str, Any]] = []
@@ -59,7 +87,12 @@ class SimulationRunner:
             timeline_row["fusion_strategy"] = fusion_strategy_name
 
             if observed == 1:
-                observation = twin.observe(event_index, row.to_dict())
+                record = row.to_dict()
+                if online_scorer is not None:
+                    record = online_scorer(record)
+                    for key in ONLINE_FIELDS:
+                        timeline_row[key] = record[key]
+                observation = twin.observe(event_index, record)
                 decision = self.decision_engine.evaluate(observation)
                 command = self.orchestrator.build_command(twin, decision)
                 delivered_command, delivery = self.transport.deliver(

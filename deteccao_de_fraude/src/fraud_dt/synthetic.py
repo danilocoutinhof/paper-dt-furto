@@ -72,7 +72,26 @@ def _base_load_profile(hour: int) -> float:
     return 1400.0
 
 
-def _theft_active(timestamp: pd.Timestamp, scenario: Scenario, rng: np.random.Generator) -> int:
+ONSET_JITTER_SEED_SALT = 7919
+"""Salt for the independent RNG stream that draws the per-day theft-onset
+jitter. A separate stream is used so that enabling/disabling the jitter does
+not change any other random draw of the generator (the v1 datasets are
+reproduced bit-for-bit when the jitter is disabled)."""
+
+
+def _theft_active(
+    timestamp: pd.Timestamp,
+    scenario: Scenario,
+    rng: np.random.Generator,
+    onset_offset_minutes: int = 0,
+) -> int:
+    # The theft window of time-structured scenarios is evaluated on a clock
+    # shifted by a per-day onset offset (0 in the v1 protocol). With a
+    # non-zero offset, a window nominally starting at 18:00 starts at
+    # 18:00 + offset on that day, so theft onset is no longer aligned with
+    # the top of the hour (where basal 60-min sampling also lands).
+    if onset_offset_minutes:
+        timestamp = timestamp - pd.Timedelta(minutes=int(onset_offset_minutes))
     hour = timestamp.hour
     if scenario == Scenario.NORMAL:
         return 0
@@ -154,8 +173,42 @@ def generate_synthetic_dataset(
     scenario: Scenario = Scenario.INTERMITTENT_EVENING,
     seed: int = 42,
     dev_eui: str = DEFAULT_DEV_EUI,
+    onset_jitter: bool = False,
 ) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
+    forensic_df, billing_df, alarm_df = generate_synthetic_frames(
+        days=days, scenario=scenario, seed=seed, dev_eui=dev_eui, onset_jitter=onset_jitter
+    )
+
+    forensic_path = output_dir / "forensic_measurements.csv"
+    billing_path = output_dir / "billing_measurements.csv"
+    alarm_path = output_dir / "alarm_events.csv"
+
+    forensic_df.to_csv(forensic_path, index=False)
+    billing_df.to_csv(billing_path, index=False)
+    alarm_df.to_csv(alarm_path, index=False)
+
+    return {
+        "forensic": forensic_path,
+        "billing": billing_path,
+        "alarms": alarm_path,
+    }
+
+
+def generate_synthetic_frames(
+    days: int = 7,
+    scenario: Scenario = Scenario.INTERMITTENT_EVENING,
+    seed: int = 42,
+    dev_eui: str = DEFAULT_DEV_EUI,
+    onset_jitter: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """In-memory generator (same streams as `generate_synthetic_dataset`).
+
+    `onset_jitter=True` shifts the theft window of each day by an offset drawn
+    uniformly from {0, 5, ..., 55} minutes (revalidation stage E3). The offset
+    comes from an independent RNG stream, so with `onset_jitter=False` the
+    output is identical to the v1 generator.
+    """
     rng = np.random.default_rng(seed)
     periods = int(days * 24 * 60 / NATIVE_INTERVAL_MINUTES)
     timestamps = pd.date_range("2026-01-01", periods=periods, freq=f"{NATIVE_INTERVAL_MINUTES}min")
@@ -178,6 +231,12 @@ def generate_synthetic_dataset(
     # evidence, and keeps the classification problem non-trivial even after
     # the forensic-vs-billing divergence itself was made noisier.
     day_theft_active_mask = rng.random(days) < 0.82
+
+    if onset_jitter:
+        jitter_rng = np.random.default_rng([seed, ONSET_JITTER_SEED_SALT])
+        day_onset_offsets = jitter_rng.integers(0, 12, size=days) * NATIVE_INTERVAL_MINUTES
+    else:
+        day_onset_offsets = np.zeros(days, dtype=int)
 
     forensic_rows = []
     billing_rows = []
@@ -209,9 +268,9 @@ def generate_synthetic_dataset(
         if benign_surge:
             active_power += abs(rng.normal(260.0, 90.0))
 
-        theft_active = _theft_active(ts, scenario, rng)
+        day_index = min(int((ts.normalize() - timestamps[0].normalize()).days), days - 1)
+        theft_active = _theft_active(ts, scenario, rng, onset_offset_minutes=int(day_onset_offsets[day_index]))
         if theft_active and scenario in (Scenario.PEAK_THEFT, Scenario.NIGHT_THEFT):
-            day_index = min(int((ts.normalize() - timestamps[0].normalize()).days), days - 1)
             if not day_theft_active_mask[day_index]:
                 theft_active = 0
         theft_ratio = 0.0
@@ -318,17 +377,4 @@ def generate_synthetic_dataset(
     forensic_df = pd.DataFrame(forensic_rows)
     billing_df = pd.DataFrame(billing_rows)
     alarm_df = pd.DataFrame(alarm_rows)
-
-    forensic_path = output_dir / "forensic_measurements.csv"
-    billing_path = output_dir / "billing_measurements.csv"
-    alarm_path = output_dir / "alarm_events.csv"
-
-    forensic_df.to_csv(forensic_path, index=False)
-    billing_df.to_csv(billing_path, index=False)
-    alarm_df.to_csv(alarm_path, index=False)
-
-    return {
-        "forensic": forensic_path,
-        "billing": billing_path,
-        "alarms": alarm_path,
-    }
+    return forensic_df, billing_df, alarm_df

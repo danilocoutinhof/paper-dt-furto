@@ -222,3 +222,81 @@ def compute_model_comparison_and_importance(
     )
 
     return model_comparison, feature_importance, roc_curve_df
+
+
+# --- Revalidation protocol (E1+): one model across scenarios, frozen ----------
+
+
+def score_rule_based_record(record: dict) -> float:
+    """Single-sample version of `score_rule_based_risk` (same rules and
+    weights), used when features are recomputed online inside the closed
+    loop (revalidation stage E4)."""
+    score = 0.0
+    score += 0.35 if record["relative_divergence"] > 0.08 else 0.0
+    score += 0.20 if record["rolling_divergence_mean"] > 0.06 else 0.0
+    score += 0.10 if record["rolling_divergence_max"] > 0.12 else 0.0
+    score += 0.15 if record["slot_recurrence"] > 0.25 else 0.0
+    score += 0.10 if record["alarm_out_of_bounds_power"] > 0 else 0.0
+    score += 0.05 if record["alarm_overcurrent"] > 0 else 0.0
+    score += 0.05 if record["operational_penalty"] > 0 else 0.0
+    return float(min(max(score, 0.0), 0.99))
+
+
+class FrozenSupervisedModel:
+    """Logistic regression trained once on pooled training realizations of
+    all scenarios and then frozen (revalidation stage E1 onward).
+
+    This replaces the per-scenario chronological split of v1, in which the
+    model was refitted inside every scenario (and degenerated into a
+    constant predictor whenever the scenario's training split had a single
+    class). The frozen model is applied to unseen test realizations only.
+    """
+
+    def __init__(self) -> None:
+        self.pipeline: Pipeline | None = None
+        self._mean: np.ndarray | None = None
+        self._scale: np.ndarray | None = None
+        self._coef: np.ndarray | None = None
+        self._intercept: float = 0.0
+        self.train_samples: int = 0
+        self.train_positive_rate: float = 0.0
+
+    def fit(self, train_df: pd.DataFrame) -> "FrozenSupervisedModel":
+        if train_df["theft_active"].nunique() < 2:
+            raise ValueError("Pooled training data must contain both classes.")
+        preprocessor = ColumnTransformer(
+            transformers=[("num", StandardScaler(), FEATURE_COLUMNS)],
+            remainder="drop",
+        )
+        self.pipeline = Pipeline(
+            steps=[
+                ("preprocessor", preprocessor),
+                ("classifier", LogisticRegression(max_iter=1000, class_weight="balanced")),
+            ]
+        )
+        self.pipeline.fit(train_df[FEATURE_COLUMNS], train_df["theft_active"])
+        scaler = self.pipeline.named_steps["preprocessor"].named_transformers_["num"]
+        classifier = self.pipeline.named_steps["classifier"]
+        self._mean = scaler.mean_.astype(float)
+        self._scale = scaler.scale_.astype(float)
+        self._coef = classifier.coef_[0].astype(float)
+        self._intercept = float(classifier.intercept_[0])
+        self.train_samples = int(len(train_df))
+        self.train_positive_rate = float(train_df["theft_active"].mean())
+        return self
+
+    def predict_proba(self, df: pd.DataFrame) -> np.ndarray:
+        x = df[FEATURE_COLUMNS].to_numpy(dtype=float)
+        z = ((x - self._mean) / self._scale) @ self._coef + self._intercept
+        return 1.0 / (1.0 + np.exp(-z))
+
+    def predict_record(self, record: dict) -> float:
+        x = np.array([float(record[c]) for c in FEATURE_COLUMNS])
+        z = float(((x - self._mean) / self._scale) @ self._coef + self._intercept)
+        return float(1.0 / (1.0 + np.exp(-z)))
+
+    def apply(self, df: pd.DataFrame) -> pd.DataFrame:
+        out = df.copy()
+        out["supervised_probability"] = self.predict_proba(out)
+        out["supervised_prediction"] = (out["supervised_probability"] >= 0.50).astype(int)
+        return out
